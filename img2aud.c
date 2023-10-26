@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -65,11 +66,17 @@ main(int argc, char **argv)
     ppm_data_t ppm_data;
     wav_header_t wav_header;
     FILE *in_fp, *out_fp;
-    const char *in_filename = "input.pgm";
-    const char *out_filename = "output.wav";
+    char *in_filename = NULL, *out_filename = NULL;
+    char pnm_type[2];
 
     /* TODO: Allow the user to enter the name of the file to open */
-    /* TODO: Allow loading multiple types of files */
+    if (argc < 3) {
+        fprintf(stderr, "Usage: img2aud [image input] [audio output]");
+        exit(EXIT_FAILURE);
+    } /* if */
+
+    in_filename = argv[1];
+    out_filename = argv[2];
 
     /* Load an image */
     if ((in_fp = fopen(in_filename, "r")) == NULL) {
@@ -79,55 +86,80 @@ main(int argc, char **argv)
     } /* if */
 
     /* Consume the first three characters */
-    /* TODO: Check the pnm file type */
+    pnm_type[0] = (char)fgetc(in_fp);
+    pnm_type[1] = (char)fgetc(in_fp);
     fgetc(in_fp);
-    fgetc(in_fp);
-    fgetc(in_fp);
+
+    if (pnm_type[0] != 'P' && !isdigit(pnm_type[1])) {
+        fprintf(stderr, "Error: Unrecognized pnm file type: %c%c",
+                pnm_type[0], pnm_type[1]);
+        exit(EXIT_FAILURE);
+    } /* if */
+
+    fscanf(in_fp, "%d", &width);
+    fscanf(in_fp, "%d", &height);
+
+    switch (pnm_type[1]) {
+        /* PBM */
+        case '1':
+        case '4':
+            data = malloc(sizeof(data) * width * height);
+            fread(data, sizeof(char), width * height, in_fp);
+            break;
+        /* PGM */
+        case '2':
+        case '5':
+            fscanf(in_fp, "%d", &max_val);
+
+            if (max_val <= 255) {
+                pgm_data.data_8bit = malloc(sizeof(pgm_data.data_8bit)
+                                            * width * height);
+                fread(pgm_data.data_8bit, sizeof(char), width * height, in_fp);
+            } /* if */
+            else {
+                pgm_data.data_16bit = malloc(sizeof(pgm_data.data_16bit)
+                                             * width * height);
+                fread(pgm_data.data_8bit, sizeof(short), width * height, in_fp);
+            } /* else */
+            break;
+        /* PPM */
+        case '3':
+        case '6':
+            fscanf(in_fp, "%d", &max_val);
+
+            if (max_val <= 255) {
+                ppm_data.data_8bit.red_data =
+                    malloc(sizeof(ppm_data.data_8bit) * width * height);
+                ppm_data.data_8bit.blue_data =
+                    malloc(sizeof(ppm_data.data_8bit) * width * height);
+                ppm_data.data_8bit.green_data =
+                    malloc(sizeof(ppm_data.data_8bit) * width * height);
+
+                for (i = 0; i < width * height; i++) {
+                    fscanf(in_fp, "%c", &ppm_data.data_8bit.red_data[i]);
+                    fscanf(in_fp, "%c", &ppm_data.data_8bit.blue_data[i]);
+                    fscanf(in_fp, "%c", &ppm_data.data_8bit.green_data[i]);
+                } /* for */
+            } /* if */
+            else {
+                ppm_data.data_16bit.red_data =
+                    malloc(sizeof(ppm_data.data_16bit) * width * height);
+                ppm_data.data_16bit.blue_data =
+                    malloc(sizeof(ppm_data.data_16bit) * width * height);
+                ppm_data.data_16bit.green_data =
+                    malloc(sizeof(ppm_data.data_16bit) * width * height);
+
+                for (i = 0; i < width * height; i++) {
+                    fscanf(in_fp, "%hd", &ppm_data.data_16bit.red_data[i]);
+                    fscanf(in_fp, "%hd", &ppm_data.data_16bit.blue_data[i]);
+                    fscanf(in_fp, "%hd", &ppm_data.data_16bit.green_data[i]);
+                } /* for */
+            } /* else */
+            break;
+        default:
+            break;
+    } /* switch */
     
-    /* PBM */
-    fscanf(in_fp, "%d", &width);
-    fscanf(in_fp, "%d", &height);
-
-    for (i = 0; i < width * height; i++) {
-        fscanf(in_fp, "%c", &data[i]);
-    } /* for */
-
-    /* PGM */
-    fscanf(in_fp, "%d", &width);
-    fscanf(in_fp, "%d", &height);
-    fscanf(in_fp, "%d", &max_val);
-
-    if (max_val <= 255) {
-        for (i = 0; i < width * height; i++) {
-            fscanf(in_fp, "%c", &pgm_data.data_8bit[i]);
-        } /* for */
-    } /* if */
-    else {
-        for (i = 0; i < width * height; i++) {
-            fscanf(in_fp, "%hd", &pgm_data.data_16bit[i]);
-        } /* for */
-    } /* else */
-
-    /* PPM */
-    fscanf(in_fp, "%d", &width);
-    fscanf(in_fp, "%d", &height);
-    fscanf(in_fp, "%d", &max_val);
-
-    if (max_val <= 255) {
-        for (i = 0; i < width * height; i++) {
-            fscanf(in_fp, "%c", &ppm_data.data_8bit.red_data[i]);
-            fscanf(in_fp, "%c", &ppm_data.data_8bit.blue_data[i]);
-            fscanf(in_fp, "%c", &ppm_data.data_8bit.green_data[i]);
-        } /* for */
-    } /* if */
-    else {
-        for (i = 0; i < width * height; i++) {
-            fscanf(in_fp, "%hd", &ppm_data.data_16bit.red_data[i]);
-            fscanf(in_fp, "%hd", &ppm_data.data_16bit.blue_data[i]);
-            fscanf(in_fp, "%hd", &ppm_data.data_16bit.green_data[i]);
-        } /* for */
-    } /* else */
-
     /* Save as audio */
     if ((out_fp = fopen(out_filename, "w")) == NULL) {
         fprintf(stderr, "Error: Could not open file %s for writing",
@@ -135,18 +167,18 @@ main(int argc, char **argv)
         exit(EXIT_FAILURE);
     } /* if */
     
-    /* TODO: Allow user to specify the file settings (eg, stereo) */
     wav_header.chunk_id = "RIFF";
     wav_header.format = "WAVE";
     wav_header.subchunk_1_id = "fmt ";
     wav_header.subchunk_1_size = 16;
+    wav_header.audio_format = 1;
     wav_header.subchunk_2_id = "data";
 
-    wav_header.audio_format = 1;
+    /* TODO: Allow user to specify the file settings (eg, stereo) */
     wav_header.num_channels = 1;
     wav_header.sample_rate = 44100;
-    wav_header.bits_per_sample = 8;
-    bps = wav_header.bits_per_sample;
+    bps = 8;
+    wav_header.bits_per_sample = bps;
     wav_header.byte_rate = wav_header.sample_rate * wav_header.num_channels
                            * wav_header.bits_per_sample / 8;
     wav_header.block_align = wav_header.num_channels
@@ -155,12 +187,12 @@ main(int argc, char **argv)
                                  * wav_header.bits_per_sample / 8;
     wav_header.chunk_size = 36 + wav_header.subchunk_2_size;
 
-    if (wav_header.bits_per_sample == 8) {
+    if (bps == 8) {
         wav_header.data.data_8bit = data;
         wav_header.data.data_8bit = pgm_data.data_8bit;
         /* TODO: Multiple audio files for ppm */
     } /* if */
-    else if (wav_header.bits_per_sample == 16) {
+    else if (bps == 16) {
         wav_header.data.data_16bit = (short *)data;
         wav_header.data.data_16bit = pgm_data.data_16bit;
         /* TODO: Multiple audio files for ppm */
@@ -239,12 +271,12 @@ main(int argc, char **argv)
     fwrite(wav_header.subchunk_2_id, sizeof(char), 4, out_fp);
     fwrite(&wav_header.subchunk_2_size, sizeof(int), 1, out_fp);
 
-    if (wav_header.bits_per_sample == 8) {
+    if (bps == 8) {
         fwrite(wav_header.data.data_8bit, sizeof(unsigned char), width * height,
                out_fp);
         /* TODO: Multiple audio files for ppm */
     } /* if */
-    else if (wav_header.bits_per_sample == 16) {
+    else if (bps == 16) {
         fwrite(wav_header.data.data_16bit, sizeof(short), width * height,
                out_fp);
         /* TODO: Multiple audio files for ppm */
