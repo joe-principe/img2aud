@@ -2,41 +2,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-typedef union pgm_data_t pgm_data_t;
-typedef union ppm_data_t ppm_data_t;
-typedef union wav_data_t wav_data_t;
+typedef struct pnm_header_t pnm_header_t;
 typedef struct wav_header_t wav_header_t;
 
-union pgm_data_t
+struct pnm_header_t
 {
-    unsigned char *data_8bit;
-    short *data_16bit;
-};
-
-struct ppm_8bit
-{
-    unsigned char *red_data;
-    unsigned char *blue_data;
-    unsigned char *green_data;
-};
-
-struct ppm_16bit
-{
-    short *red_data;
-    short *blue_data;
-    short *green_data;
-};
-
-union ppm_data_t
-{
-    struct ppm_8bit data_8bit;
-    struct ppm_16bit data_16bit;
-};
-
-union wav_data_t
-{
-    unsigned char *data_8bit;
-    signed short *data_16bit;
+    char pnm_type;
+    unsigned int width;
+    unsigned int height;
+    short max_val;
+    unsigned char *data;
 };
 
 struct wav_header_t
@@ -54,24 +29,22 @@ struct wav_header_t
     short bits_per_sample;
     char *subchunk_2_id;
     int subchunk_2_size;
-    wav_data_t data;
+    unsigned char *data;
 };
 
 int
 main(int argc, char **argv)
 {
-    int i, width, height, max_val, bps;
-    unsigned char *data = NULL;
-    pgm_data_t pgm_data;
-    ppm_data_t ppm_data;
-    wav_header_t wav_header;
+    signed short tmp;
+    int i, bps;
     FILE *in_fp, *out_fp;
     char *in_filename = NULL, *out_filename = NULL;
     char pnm_type[2];
+    pnm_header_t pnm_header;
+    wav_header_t wav_header;
 
-    /* TODO: Allow the user to enter the name of the file to open */
     if (argc < 3) {
-        fprintf(stderr, "Usage: img2aud [image input] [audio output]");
+        fprintf(stderr, "Usage: img2aud [image input] [audio output]\n");
         exit(EXIT_FAILURE);
     } /* if */
 
@@ -80,7 +53,7 @@ main(int argc, char **argv)
 
     /* Load an image */
     if ((in_fp = fopen(in_filename, "r")) == NULL) {
-        fprintf(stderr, "Error: Could not open file %s for reading",
+        fprintf(stderr, "Error: Could not open file %s for reading\n",
                 in_filename);
         exit(EXIT_FAILURE);
     } /* if */
@@ -91,78 +64,210 @@ main(int argc, char **argv)
     fgetc(in_fp);
 
     if (pnm_type[0] != 'P' && !isdigit(pnm_type[1])) {
-        fprintf(stderr, "Error: Unrecognized pnm file type: %c%c",
+        fprintf(stderr, "Error: Unrecognized pnm file type: %c%c\n",
                 pnm_type[0], pnm_type[1]);
         exit(EXIT_FAILURE);
     } /* if */
 
-    fscanf(in_fp, "%d", &width);
-    fscanf(in_fp, "%d", &height);
+    pnm_header.pnm_type = pnm_type[1];
+
+    fscanf(in_fp, "%d", &pnm_header.width);
+    fscanf(in_fp, "%d", &pnm_header.height);
 
     switch (pnm_type[1]) {
-        /* PBM */
+        /* PBM ASCII */
         case '1':
+            pnm_header.data = malloc(sizeof(pnm_header.data)
+                                     * pnm_header.width * pnm_header.height);
+            
+            if (pnm_header.data == NULL) {
+                fprintf(stderr, "Error: Could not allocate enough memory for"
+                        " image data at line %d\n", __LINE__);
+                exit (EXIT_FAILURE);
+            } /* if */
+
+            for (i = 0; i < pnm_header.width * pnm_header.height; i++) {
+                fscanf(in_fp, "%hhu", &pnm_header.data[i]);
+            } /* for */
+            break;
+
+        /* PBM Binary */
         case '4':
-            data = malloc(sizeof(data) * width * height);
-            fread(data, sizeof(char), width * height, in_fp);
+            pnm_header.data = malloc(sizeof(pnm_header.data)
+                                     * pnm_header.width * pnm_header.height);
+            
+            if (pnm_header.data == NULL) {
+                fprintf(stderr, "Error: Could not allocate enough memory for"
+                        " image data at line %d\n", __LINE__);
+                exit (EXIT_FAILURE);
+            } /* if */
+
+            /* Consume the whitespace before the first pixel */
+            fgetc(in_fp);
+            for (i = 0; i < pnm_header.width * pnm_header.height; i++) {
+                pnm_header.data[i] = (unsigned char)fgetc(in_fp);
+            } /* for */
             break;
-        /* PGM */
+
+        /* PGM ASCII */
         case '2':
+            fscanf(in_fp, "%hd", &pnm_header.max_val);
+
+            if (pnm_header.max_val <= 255) {
+                pnm_header.data = malloc(sizeof(pnm_header.data)
+                                         * pnm_header.width
+                                         * pnm_header.height);
+            
+                if (pnm_header.data == NULL) {
+                    fprintf(stderr, "Error: Could not allocate enough memory"
+                            " for image data at line %d\n", __LINE__);
+                    exit(EXIT_FAILURE);
+                } /* if */
+
+                for (i = 0; i < pnm_header.width * pnm_header.height; i++) {
+                    fscanf(in_fp, "%hhu", &pnm_header.data[i]);
+                } /* for */
+            } /* if */
+            else {
+                pnm_header.data = malloc(sizeof(pnm_header.data) * 2
+                                         * pnm_header.width
+                                         * pnm_header.height);
+            
+                if (pnm_header.data == NULL) {
+                    fprintf(stderr, "Error: Could not allocate enough memory"
+                            " for image data at line %d\n", __LINE__);
+                    exit(EXIT_FAILURE);
+                } /* if */
+
+                for (i = 0; i < pnm_header.width * pnm_header.height; i += 2) {
+                    fscanf(in_fp, "%hd", &tmp);
+                    pnm_header.data[i]     = tmp & 0xFF00;
+                    pnm_header.data[i + 1] = tmp & 0x00FF;
+                } /* for */
+            } /* else */
+            break;
+
+        /* PGM Binary */
         case '5':
-            fscanf(in_fp, "%d", &max_val);
+            fscanf(in_fp, "%hd", &pnm_header.max_val);
 
-            if (max_val <= 255) {
-                pgm_data.data_8bit = malloc(sizeof(pgm_data.data_8bit)
-                                            * width * height);
-                fread(pgm_data.data_8bit, sizeof(char), width * height, in_fp);
+            if (pnm_header.max_val <= 255) {
+                pnm_header.data = malloc(sizeof(pnm_header.data)
+                                         * pnm_header.width
+                                         * pnm_header.height);
+                if (pnm_header.data == NULL) {
+                    fprintf(stderr, "Error: Could not allocate enough memory"
+                            " for image data at line %d\n", __LINE__);
+                    exit(EXIT_FAILURE);
+                } /* if */
+
+                for (i = 0; i < pnm_header.width * pnm_header.height; i++) {
+                    pnm_header.data[i] = fgetc(in_fp);
+                } /* for */
             } /* if */
             else {
-                pgm_data.data_16bit = malloc(sizeof(pgm_data.data_16bit)
-                                             * width * height);
-                fread(pgm_data.data_8bit, sizeof(short), width * height, in_fp);
+                pnm_header.data = malloc(sizeof(pnm_header.data) * 2
+                                         * pnm_header.width
+                                         * pnm_header.height);
+
+                if (pnm_header.data == NULL) {
+                    fprintf(stderr, "Error: Could not allocate enough memory"
+                            " for image data at line %d\n", __LINE__);
+                    exit(EXIT_FAILURE);
+                } /* if */
+
+                for (i = 0; i < pnm_header.width * pnm_header.height * 2; i++) {
+                    pnm_header.data[i] = fgetc(in_fp);
+                } /* for */
             } /* else */
             break;
-        /* PPM */
+
+        /* PPM ASCII */
         case '3':
-        case '6':
-            fscanf(in_fp, "%d", &max_val);
+            fscanf(in_fp, "%hd", &pnm_header.max_val);
 
-            if (max_val <= 255) {
-                ppm_data.data_8bit.red_data =
-                    malloc(sizeof(ppm_data.data_8bit) * width * height);
-                ppm_data.data_8bit.blue_data =
-                    malloc(sizeof(ppm_data.data_8bit) * width * height);
-                ppm_data.data_8bit.green_data =
-                    malloc(sizeof(ppm_data.data_8bit) * width * height);
+            if (pnm_header.max_val <= 255) {
+                pnm_header.data = malloc(sizeof(pnm_header.data) * 3
+                                         * pnm_header.width
+                                         * pnm_header.height);
 
-                for (i = 0; i < width * height; i++) {
-                    fscanf(in_fp, "%c", &ppm_data.data_8bit.red_data[i]);
-                    fscanf(in_fp, "%c", &ppm_data.data_8bit.blue_data[i]);
-                    fscanf(in_fp, "%c", &ppm_data.data_8bit.green_data[i]);
+                if (pnm_header.data == NULL) {
+                    fprintf(stderr, "Error: Could not allocate enough memory"
+                            " for image data at line %d\n", __LINE__);
+                    exit(EXIT_FAILURE);
+                } /* if */
+
+                for (i = 0; i < pnm_header.width * pnm_header.height * 3; i++) {
+                    fscanf(in_fp, "%hhu", &pnm_header.data[i]);
                 } /* for */
             } /* if */
             else {
-                ppm_data.data_16bit.red_data =
-                    malloc(sizeof(ppm_data.data_16bit) * width * height);
-                ppm_data.data_16bit.blue_data =
-                    malloc(sizeof(ppm_data.data_16bit) * width * height);
-                ppm_data.data_16bit.green_data =
-                    malloc(sizeof(ppm_data.data_16bit) * width * height);
+                pnm_header.data = malloc(sizeof(pnm_header.data) * 3 * 2
+                                         * pnm_header.width
+                                         * pnm_header.height);
 
-                for (i = 0; i < width * height; i++) {
-                    fscanf(in_fp, "%hd", &ppm_data.data_16bit.red_data[i]);
-                    fscanf(in_fp, "%hd", &ppm_data.data_16bit.blue_data[i]);
-                    fscanf(in_fp, "%hd", &ppm_data.data_16bit.green_data[i]);
+                if (pnm_header.data == NULL) {
+                    fprintf(stderr, "Error: Could not allocate enough memory"
+                            " for image data at line %d\n", __LINE__);
+                    exit(EXIT_FAILURE);
+                } /* if */
+
+                for (i = 0; i < pnm_header.width * pnm_header.height * 3 * 2;
+                     i += 2) {
+                    fscanf(in_fp, "%hd", &tmp);
+                    pnm_header.data[i]     = tmp & 0xFF00;
+                    pnm_header.data[i + 1] = tmp & 0x00FF;
                 } /* for */
             } /* else */
             break;
+
+        /* PPM Binary */
+        case '6':
+            fscanf(in_fp, "%hd", &pnm_header.max_val);
+
+            if (pnm_header.max_val <= 255) {
+                pnm_header.data = malloc(sizeof(pnm_header.data) * 3
+                                         * pnm_header.width
+                                         * pnm_header.height);
+
+                if (pnm_header.data == NULL) {
+                    fprintf(stderr, "Error: Could not allocate enough memory"
+                            " for image data at line %d\n", __LINE__);
+                    exit(EXIT_FAILURE);
+                } /* if */
+
+                for (i = 0; i < pnm_header.width * pnm_header.height * 3; i++) {
+                    pnm_header.data[i] = fgetc(in_fp);
+                } /* for */
+            } /* if */
+            else {
+                pnm_header.data = malloc(sizeof(pnm_header.data) * 3 * 2
+                                         * pnm_header.width
+                                         * pnm_header.height);
+
+                if (pnm_header.data == NULL) {
+                    fprintf(stderr, "Error: Could not allocate enough memory"
+                            " for image data at line %d\n", __LINE__);
+                    exit(EXIT_FAILURE);
+                } /* if */
+
+                for (i = 0; i < pnm_header.width * pnm_header.height * 3 * 2;
+                     i += 2) {
+                    pnm_header.data[i]     = fgetc(in_fp);
+                    pnm_header.data[i + 1] = fgetc(in_fp);
+                } /* for */
+            } /* else */
+            break;
+
         default:
             break;
     } /* switch */
+
+    fclose(in_fp);
     
     /* Save as audio */
     if ((out_fp = fopen(out_filename, "w")) == NULL) {
-        fprintf(stderr, "Error: Could not open file %s for writing",
+        fprintf(stderr, "Error: Could not open file %s for writing\n",
                 out_filename);
         exit(EXIT_FAILURE);
     } /* if */
@@ -187,6 +292,7 @@ main(int argc, char **argv)
                                  * wav_header.bits_per_sample / 8;
     wav_header.chunk_size = 36 + wav_header.subchunk_2_size;
 
+    /* TODO: Figure out a good way to decide which data is being used */
     if (bps == 8) {
         wav_header.data.data_8bit = data;
         wav_header.data.data_8bit = pgm_data.data_8bit;
@@ -281,6 +387,10 @@ main(int argc, char **argv)
                out_fp);
         /* TODO: Multiple audio files for ppm */
     } /* else if */
+
+    /* TODO: Clean up memory allocated for image data */
+
+    fclose(out_fp);
 
     return 0;
 }
