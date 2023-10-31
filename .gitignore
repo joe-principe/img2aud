@@ -35,6 +35,11 @@
 *.i*86
 *.x86_64
 *.hex
+/bin
+
+# Binary input/output files
+*.ppm
+*.wav
 
 # Debug files
 *.dSYM/
