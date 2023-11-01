@@ -332,21 +332,26 @@ main(int argc, char **argv)
                              * wav_header.num_channels,
                              wav_header.bits_per_sample / 8);
 
-    /* TODO: Add support for more than two audio channels. Will this ever
+    /* 
+     * TODO: Add support for more than two audio channels. Will this ever
      * actually come up? Probably not, but it'd be nice to support upto
-     * eight-channel audio as well */
-    /* That'd be kind of a waste, but what do I care? This project is just to
-     * flex my programming muscles, lol */
+     * eight-channel audio as well
+     */
+
+    /* 
+     * That'd be kind of a waste, but what do I care? This project is just to
+     * flex my programming muscles, lol
+     */
 
     if (bps == 8) {
-        /* For 8 bits per channel to 8 bits per sample, simply switch the
-         * endianness */
+        /* 
+         * For 8 bits per channel to 8 bits per sample, simply copy the data
+         */
         if (pnm_header.bits_per_pixel == 8) {
             for (i = 0; i < pnm_header.width * pnm_header.height
                  * pnm_header.num_channels; i++) {
 
-                wav_header.data[nc * i] =
-                    (pnm_header.data[i] >> 4) | (pnm_header.data[i] << 4);
+                wav_header.data[nc * i] = pnm_header.data[i];
                 
                 /* If there are 2 audio channels, set the right channel equal to
                  * the left channel */
@@ -355,13 +360,14 @@ main(int argc, char **argv)
                 }
             }
         }
-        /* For 16 bits per channel to 8 bits per sample, first constrain the
-         * data down to 8 bits by dividing the original data by 256. Next,
-         * switch the endianness */ 
+        /* 
+         * For 16 bits per channel to 8 bits per sample, constrain the
+         * data down to 8 bits by dividing the original data by 256
+         */
         else {
             for (i = 0; i < pnm_header.width * pnm_header.height * 2; i += 2) {
-                tmp = (pnm_header.data[i] | pnm_header.data[i + 1]) / 256;
-                wav_header.data[i / 2] = (tmp >> 8) | (tmp << 8);
+                wav_header.data[i / 2] =
+                    (pnm_header.data[i] | pnm_header.data[i + 1]) / 256;
 
                 if (nc == 2) {
                     wav_header.data[i + 1] = wav_header.data[i / 2];
@@ -370,18 +376,20 @@ main(int argc, char **argv)
         }
     }
     else if (bps == 16) {
-        /* For 8 bits per channel to 16 bits per sample, first expand the data
+        /* 
+         * For 8 bits per channel to 16 bits per sample, first expand the data
          * up to 16 bits by multiplying the original data by 256. Next, subtract
-         * by 2^15 to center around 0. Finally, switch the endianness */
+         * by 2^15 to center around 0
+         */
         if (pnm_header.bits_per_pixel == 8) {
             for (i = 0; i < pnm_header.width * pnm_header.height
                  * pnm_header.num_channels; i++) {
 
                 stmp = pnm_header.data[i] * 256 - 32768;
                 wav_header.data[2 * nc * i] =
-                    (unsigned char)(stmp & 0x00FF);
+                    (unsigned char)(stmp & 0xFF00);
                 wav_header.data[2 * nc * i + 1] =
-                    (unsigned char)((stmp & 0xFF00) >> 8);
+                    (unsigned char)(stmp & 0x00FF);
 
                 if (nc == 2) {
                     wav_header.data[4 * i + 2] = wav_header.data[4 * i];
@@ -390,14 +398,15 @@ main(int argc, char **argv)
             }
         }
 
-        /* For 16 bits per channel to 16 bits per sample, simply switch the
-         * endianness */
+        /* 
+         * For 16 bits per channel to 16 bits per sample, simply copy the data
+         */
         else {
             for (i = 0; i < pnm_header.width * pnm_header.height
                  * pnm_header.num_channels; i += 2) {
 
-                wav_header.data[nc * i] = pnm_header.data[i + 1];
-                wav_header.data[nc * i + 1] = pnm_header.data[i];
+                wav_header.data[nc * i] = pnm_header.data[i];
+                wav_header.data[nc * i + 1] = pnm_header.data[i + 1];
 
                 if (nc == 2) {
                     wav_header.data[2 * i + 2] = wav_header.data[2 * i];
