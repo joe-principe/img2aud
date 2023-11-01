@@ -38,6 +38,8 @@
 /bin
 
 # Binary input/output files
+/images
+/audios
 *.ppm
 *.wav
 
